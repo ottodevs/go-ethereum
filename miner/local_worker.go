@@ -21,23 +21,6 @@ import (
 
 var jsonlogger = logger.NewJsonLogger()
 
-// Work holds the current work
-type Work struct {
-	Number    uint64
-	Nonce     uint64
-	MixDigest []byte
-	SeedHash  []byte
-}
-
-// Agent can register themself with the worker
-type Agent interface {
-	Work() chan<- *types.Block
-	SetReturnCh(chan<- *types.Block)
-	Stop()
-	Start()
-	GetHashRate() int64
-}
-
 // environment is the workers current environment and holds
 // all of the current state information
 type environment struct {
@@ -102,9 +85,10 @@ type worker struct {
 	atWork int32
 }
 
-func newWorker(coinbase common.Address, eth core.Backend) *worker {
+func NewLocalMiner(coinbase common.Address, eth core.Backend, pow pow.PoW) *worker {
 	worker := &worker{
 		eth:            eth,
+		pow:            pow,
 		mux:            eth.EventMux(),
 		recv:           make(chan *types.Block),
 		gasPrice:       new(big.Int),
@@ -123,33 +107,54 @@ func newWorker(coinbase common.Address, eth core.Backend) *worker {
 	return worker
 }
 
-func (self *worker) pendingState() *state.StateDB {
+func (self *worker) SetGasPrice(price *big.Int) {
+	// FIXME block tests set a nil gas price. Quick dirty fix
+	if price == nil {
+		return
+	}
+	self.gasPrice = price
+}
+
+func (self *worker) SetExtra(extra []byte) {
+	self.extra = extra
+}
+
+func (self *worker) PendingState() *state.StateDB {
 	self.currentMu.Lock()
 	defer self.currentMu.Unlock()
 
 	return self.current.state
 }
 
-func (self *worker) pendingBlock() *types.Block {
+func (self *worker) PendingBlock() *types.Block {
 	self.currentMu.Lock()
 	defer self.currentMu.Unlock()
 
 	return self.current.block
 }
 
-func (self *worker) start() {
+func (self *worker) Start(coinbase common.Address, threads int) {
+	// Start up a batch of local CPU miners if requested
+	for i := 0; i < threads; i++ {
+		self.Register(NewCpuAgent(i, self.pow))
+	}
+	glog.V(logger.Info).Infof("Starting mining operation (CPU=%d TOT=%d)\n", threads, len(self.agents))
+
+	// Boot up the local miner scheduler
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
 	atomic.StoreInt32(&self.mining, 1)
+	self.coinbase = coinbase
+	self.commitNewWork()
 
-	// spin up agents
+	// Spin up idle agents
 	for _, agent := range self.agents {
 		agent.Start()
 	}
 }
 
-func (self *worker) stop() {
+func (self *worker) Stop() {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
@@ -170,10 +175,17 @@ func (self *worker) stop() {
 	atomic.StoreInt32(&self.atWork, 0)
 }
 
-func (self *worker) register(agent Agent) {
+func (self *worker) Mining() bool {
+	return atomic.LoadInt32(&self.mining) == 1
+}
+
+func (self *worker) Register(agent Agent) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
+	if atomic.LoadInt32(&self.mining) == 1 {
+		agent.Start()
+	}
 	self.agents = append(self.agents, agent)
 	agent.SetReturnCh(self.recv)
 }

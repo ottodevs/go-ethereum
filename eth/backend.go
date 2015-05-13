@@ -78,6 +78,7 @@ type Config struct {
 	Etherbase      string
 	GasPrice       *big.Int
 	MinerThreads   int
+	MinerFarm      string
 	AccountManager *accounts.Manager
 
 	// NewDB is used to create databases.
@@ -185,7 +186,7 @@ type Ethereum struct {
 	net      *p2p.Server
 	eventMux *event.TypeMux
 	txSub    event.Subscription
-	miner    *miner.Miner
+	miner    miner.Miner
 
 	// logger logger.LogSystem
 
@@ -270,7 +271,7 @@ func New(config *Config) (*Ethereum, error) {
 	eth.txPool = core.NewTxPool(eth.EventMux(), eth.chainManager.State, eth.chainManager.GasLimit)
 	eth.blockProcessor = core.NewBlockProcessor(stateDb, extraDb, eth.pow, eth.txPool, eth.chainManager, eth.EventMux())
 	eth.chainManager.SetProcessor(eth.blockProcessor)
-	eth.miner = miner.New(eth, eth.pow)
+	eth.miner = miner.NewLocalMiner(common.Address{}, eth, eth.pow)
 	eth.miner.SetGasPrice(config.GasPrice)
 
 	eth.protocolManager = NewProtocolManager(config.ProtocolVersion, config.NetworkId, eth.eventMux, eth.txPool, eth.chainManager, eth.downloader)
@@ -399,9 +400,9 @@ func (s *Ethereum) Etherbase() (eb common.Address, err error) {
 	return eb, nil
 }
 
-func (s *Ethereum) StopMining()         { s.miner.Stop() }
-func (s *Ethereum) IsMining() bool      { return s.miner.Mining() }
-func (s *Ethereum) Miner() *miner.Miner { return s.miner }
+func (s *Ethereum) StopMining()        { s.miner.Stop() }
+func (s *Ethereum) IsMining() bool     { return s.miner.Mining() }
+func (s *Ethereum) Miner() miner.Miner { return s.miner }
 
 // func (s *Ethereum) Logger() logger.LogSystem             { return s.logger }
 func (s *Ethereum) Name() string                         { return s.net.Name }

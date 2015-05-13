@@ -77,6 +77,7 @@ func init() {
 		utils.MaxPeersFlag,
 		utils.MaxPendingPeersFlag,
 		utils.MinerThreadsFlag,
+		utils.MinerFarmFlag,
 		utils.NATFlag,
 		utils.NodeKeyFileFlag,
 		utils.RPCListenAddrFlag,

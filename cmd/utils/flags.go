@@ -108,6 +108,10 @@ var (
 		Usage: "Number of miner threads",
 		Value: runtime.NumCPU(),
 	}
+	MinerFarmFlag = cli.StringFlag{
+		Name:  "minerfarm",
+		Usage: "Address of the mining farm through which to generate blocks",
+	}
 	MiningEnabledFlag = cli.BoolFlag{
 		Name:  "mine",
 		Usage: "Enable mining",
@@ -300,6 +304,7 @@ func MakeEthConfig(clientID, version string, ctx *cli.Context) *eth.Config {
 		LogJSON:            ctx.GlobalString(LogJSONFlag.Name),
 		Etherbase:          ctx.GlobalString(EtherbaseFlag.Name),
 		MinerThreads:       ctx.GlobalInt(MinerThreadsFlag.Name),
+		MinerFarm:          ctx.GlobalString(MinerFarmFlag.Name),
 		AccountManager:     GetAccountManager(ctx),
 		VmDebug:            ctx.GlobalBool(VMDebugFlag.Name),
 		MaxPeers:           ctx.GlobalInt(MaxPeersFlag.Name),

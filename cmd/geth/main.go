@@ -245,6 +245,7 @@ JavaScript API. See https://github.com/ethereum/go-ethereum/wiki/Javascipt-Conso
 		utils.EtherbaseFlag,
 		utils.GasPriceFlag,
 		utils.MinerThreadsFlag,
+		utils.MinerFarmFlag,
 		utils.MiningEnabledFlag,
 		utils.NATFlag,
 		utils.NatspecEnabledFlag,
