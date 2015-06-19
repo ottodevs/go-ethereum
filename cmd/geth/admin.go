@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/rcrowley/go-metrics"
+
 	"github.com/ethereum/ethash"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/cmd/utils"
@@ -98,6 +100,8 @@ func (js *jsre) adminBindings() {
 	debug.Set("insertBlock", js.insertBlockRlp)
 	// undocumented temporary
 	debug.Set("waitForBlocks", js.waitForBlocks)
+
+	admin.Set("metrics", js.metrics)
 }
 
 // generic helper to getBlock by Number/Height or Hex depending on autodetected input
@@ -715,6 +719,25 @@ func (js *jsre) waitForBlocks(call otto.FunctionCall) otto.Value {
 	case height = <-wait:
 	}
 	v, _ := call.Otto.ToValue(height.Uint64())
+	return v
+}
+
+func (js *jsre) metrics(call otto.FunctionCall) otto.Value {
+	// Iterate over all the metrics, and just dump for now
+	counters := make(map[string]interface{})
+	metrics.DefaultRegistry.Each(func(name string, metric interface{}) {
+		switch metric := metric.(type) {
+		case metrics.Meter:
+			counters[name+"( 1 min)"] = int(metric.Rate1() * 60)
+			counters[name+"( 5 min)"] = int(metric.Rate5() * 300)
+			counters[name+"(15 min)"] = int(metric.Rate15() * 900)
+
+		default:
+			counters[name] = "Unknown metric type"
+		}
+	})
+	// Flatten the counters into some metrics and return
+	v, _ := call.Otto.ToValue(counters)
 	return v
 }
 
