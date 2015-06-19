@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/rcrowley/go-metrics"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/logger"
@@ -88,6 +90,11 @@ type Fetcher struct {
 	chainHeight    chainHeightFn      // Retrieves the current chain's height
 	insertChain    chainInsertFn      // Injects a batch of blocks into the chain
 	dropPeer       peerDropFn         // Drops a peer for misbehaving
+
+	// Runtime metrics
+	announceStats  metrics.Meter
+	broadcastStats metrics.Meter
+	discardStats   metrics.Meter
 }
 
 // New creates a block fetcher to retrieve blocks based on hash announcements.
@@ -108,6 +115,9 @@ func New(getBlock blockRetrievalFn, validateBlock blockValidatorFn, broadcastBlo
 		chainHeight:    chainHeight,
 		insertChain:    insertChain,
 		dropPeer:       dropPeer,
+		announceStats:  metrics.GetOrRegisterMeter("eth/Announced Blocks", metrics.DefaultRegistry),
+		broadcastStats: metrics.GetOrRegisterMeter("eth/Propagated Blocks", metrics.DefaultRegistry),
+		discardStats:   metrics.GetOrRegisterMeter("eth/Discarded Blocks", metrics.DefaultRegistry),
 	}
 }
 
@@ -218,6 +228,7 @@ func (f *Fetcher) loop() {
 
 		case notification := <-f.notify:
 			// A block was announced, schedule if it's not yet downloading
+			f.announceStats.Mark(1)
 			if _, ok := f.fetching[notification.hash]; ok {
 				break
 			}
@@ -228,6 +239,7 @@ func (f *Fetcher) loop() {
 
 		case op := <-f.inject:
 			// A direct block insertion was requested, try and fill any pending gaps
+			f.broadcastStats.Mark(1)
 			f.enqueue(op.origin, op.block)
 
 		case hash := <-f.done:
@@ -331,6 +343,7 @@ func (f *Fetcher) enqueue(peer string, block *types.Block) {
 	// Discard any past or too distant blocks
 	if dist := int64(block.NumberU64()) - int64(f.chainHeight()); dist < -maxUncleDist || dist > maxQueueDist {
 		glog.V(logger.Debug).Infof("Peer %s: discarded block #%d [%x], distance %d", peer, block.NumberU64(), hash.Bytes()[:4], dist)
+		f.discardStats.Mark(1)
 		return
 	}
 	// Schedule the block for future importing
