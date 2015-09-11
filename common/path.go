@@ -100,6 +100,14 @@ func DefaultAssetPath() string {
 }
 
 func DefaultDataDir() string {
+	// If the platform is android, use global paths
+	if runtime.GOOS == "android" {
+		if _, err := os.Stat("/sdcard"); err == nil {
+			return filepath.Join("/sdcard", "Ethereum")
+		}
+		return filepath.Join("/data", "data", "Ethereum")
+	}
+	// Otherwise place the data dir into the user's home folder
 	usr, _ := user.Current()
 	if runtime.GOOS == "darwin" {
 		return filepath.Join(usr.HomeDir, "Library", "Ethereum")
@@ -113,6 +121,8 @@ func DefaultDataDir() string {
 func DefaultIpcPath() string {
 	if runtime.GOOS == "windows" {
 		return `\\.\pipe\geth.ipc`
+	} else if runtime.GOOS == "android" {
+		return filepath.Join("/data", "data", "Ethereum", "geth.ipc")
 	}
 	return filepath.Join(DefaultDataDir(), "geth.ipc")
 }
