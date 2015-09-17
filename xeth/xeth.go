@@ -791,7 +791,7 @@ func (self *XEth) PushTx(encodedTx string) (string, error) {
 		return "", err
 	}
 
-	err = self.backend.TxPool().Add(tx)
+	err = self.backend.TxPool().Add(tx, true)
 	if err != nil {
 		return "", err
 	}
@@ -980,7 +980,7 @@ func (self *XEth) Transact(fromStr, toStr, nonceStr, valueStr, gasStr, gasPriceS
 	if err != nil {
 		return "", err
 	}
-	if err = self.backend.TxPool().Add(signed); err != nil {
+	if err = self.backend.TxPool().Add(signed, true); err != nil {
 		return "", err
 	}
 

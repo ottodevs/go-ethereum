@@ -30,8 +30,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/pow"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/hashicorp/golang-lru"
@@ -483,22 +485,87 @@ func TestInsertNonceError(t *testing.T) {
 	}
 }
 
-/*
-func TestGenesisMismatch(t *testing.T) {
-	db, _ := ethdb.NewMemDatabase()
-	var mux event.TypeMux
-	genesis := GenesisBlock(0, db)
-	_, err := NewChainManager(genesis, db, db, db, thePow(), &mux)
-	if err != nil {
+func TestChainReorgMissingTransactions(t *testing.T) {
+	params.MinGasLimit = big.NewInt(125000)      // Minimum the gas limit may ever be.
+	params.GenesisGasLimit = big.NewInt(3141592) // Gas limit of the Genesis block.
+
+	var (
+		key1, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+		key2, _ = crypto.HexToECDSA("8a1f9a8f95be41cd7ccb6168179afb4504aefe388d1e14474d32c45c72ce7b7a")
+		addr1   = crypto.PubkeyToAddress(key1.PublicKey)
+		addr2   = crypto.PubkeyToAddress(key2.PublicKey)
+		db, _   = ethdb.NewMemDatabase()
+	)
+	// Ensure that key1 has some funds in the genesis block.
+	genesis := WriteGenesisBlockForTesting(db, GenesisAccount{addr1, big.NewInt(1000000)}, GenesisAccount{addr2, big.NewInt(1000000)})
+
+	shared, _ := types.NewTransaction(0, addr1, big.NewInt(1000), params.TxGas, nil, nil).SignECDSA(key2)
+	var remove *types.Transaction
+	chain := GenerateChain(genesis, db, 2, func(i int, gen *BlockGen) {
+		switch i {
+		case 0:
+			remove, _ = types.NewTransaction(gen.TxNonce(addr1), addr2, big.NewInt(1000), params.TxGas, nil, nil).SignECDSA(key1)
+
+			gen.AddTx(remove)
+			gen.AddTx(shared)
+		}
+	})
+
+	// Import the chain. This runs all block validation rules.
+	evmux := &event.TypeMux{}
+	chainman, _ := NewChainManager(db, FakePow{}, evmux)
+	chainman.SetProcessor(NewBlockProcessor(db, FakePow{}, chainman, evmux))
+	if _, err := chainman.InsertChain(chain); err != nil {
 		t.Error(err)
 	}
-	genesis = GenesisBlock(1, db)
-	_, err = NewChainManager(genesis, db, db, db, thePow(), &mux)
-	if err == nil {
-		t.Error("expected genesis mismatch error")
+
+	var keep1, keep2 *types.Transaction
+	// overwrite the old chain
+	chain = GenerateChain(genesis, db, 5, func(i int, gen *BlockGen) {
+		switch i {
+		case 2:
+			gen.AddTx(shared)
+			keep1, _ = types.NewTransaction(gen.TxNonce(addr2), addr2, big.NewInt(1000), params.TxGas, nil, nil).SignECDSA(key2)
+			gen.AddTx(keep1)
+		case 3:
+			keep2, _ = types.NewTransaction(gen.TxNonce(addr2), addr2, big.NewInt(1000), params.TxGas, nil, nil).SignECDSA(key2)
+			gen.AddTx(keep2)
+		}
+	})
+	if _, err := chainman.InsertChain(chain); err != nil {
+		t.Error(err)
+	}
+
+	// removed tx
+	if GetTransaction(db, remove.Hash()) != nil {
+		t.Error("tx found while shouldn't have been")
+	}
+	if GetReceipt(db, remove.Hash()) != nil {
+		t.Error("receipt found while shouldn't have been")
+	}
+
+	// kept tx
+	if GetTransaction(db, keep1.Hash()) == nil {
+		t.Error("expected tx to be found")
+	}
+	if GetReceipt(db, keep1.Hash()) == nil {
+		t.Error("expected receipt to be found")
+	}
+	if GetTransaction(db, keep2.Hash()) == nil {
+		t.Error("expected tx to be found")
+	}
+	if GetReceipt(db, keep2.Hash()) == nil {
+		t.Error("expected receipt to be found")
+	}
+
+	// shared tx
+	if GetTransaction(db, shared.Hash()) == nil {
+		t.Error("expected tx to be found")
+	}
+	if GetReceipt(db, shared.Hash()) == nil {
+		t.Error("expected receipt to be found")
 	}
 }
-*/
 
 // failpow returns false from Verify for a certain block number.
 type failpow struct{ num uint64 }

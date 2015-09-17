@@ -47,26 +47,26 @@ func TestInvalidTransactions(t *testing.T) {
 	pool, key := setupTxPool()
 
 	tx := transaction(0, big.NewInt(100), key)
-	if err := pool.Add(tx); err != ErrNonExistentAccount {
+	if err := pool.Add(tx, false); err != ErrNonExistentAccount {
 		t.Error("expected", ErrNonExistentAccount)
 	}
 
 	from, _ := tx.From()
 	pool.currentState().AddBalance(from, big.NewInt(1))
-	if err := pool.Add(tx); err != ErrInsufficientFunds {
+	if err := pool.Add(tx, false); err != ErrInsufficientFunds {
 		t.Error("expected", ErrInsufficientFunds)
 	}
 
 	balance := new(big.Int).Add(tx.Value(), new(big.Int).Mul(tx.Gas(), tx.GasPrice()))
 	pool.currentState().AddBalance(from, balance)
-	if err := pool.Add(tx); err != ErrIntrinsicGas {
+	if err := pool.Add(tx, false); err != ErrIntrinsicGas {
 		t.Error("expected", ErrIntrinsicGas, "got", err)
 	}
 
 	pool.currentState().SetNonce(from, 1)
 	pool.currentState().AddBalance(from, big.NewInt(0xffffffffffffff))
 	tx = transaction(0, big.NewInt(100000), key)
-	if err := pool.Add(tx); err != ErrNonce {
+	if err := pool.Add(tx, false); err != ErrNonce {
 		t.Error("expected", ErrNonce)
 	}
 }
@@ -76,7 +76,7 @@ func TestTransactionQueue(t *testing.T) {
 	tx := transaction(0, big.NewInt(100), key)
 	from, _ := tx.From()
 	pool.currentState().AddBalance(from, big.NewInt(1))
-	pool.queueTx(tx.Hash(), tx)
+	pool.queueTx(tx.Hash(), tx, false)
 
 	pool.checkQueue()
 	if len(pool.pending) != 1 {
@@ -86,7 +86,7 @@ func TestTransactionQueue(t *testing.T) {
 	tx = transaction(1, big.NewInt(100), key)
 	from, _ = tx.From()
 	pool.currentState().SetNonce(from, 2)
-	pool.queueTx(tx.Hash(), tx)
+	pool.queueTx(tx.Hash(), tx, false)
 	pool.checkQueue()
 	if _, ok := pool.pending[tx.Hash()]; ok {
 		t.Error("expected transaction to be in tx pool")
@@ -100,9 +100,9 @@ func TestTransactionQueue(t *testing.T) {
 	tx1 := transaction(0, big.NewInt(100), key)
 	tx2 := transaction(10, big.NewInt(100), key)
 	tx3 := transaction(11, big.NewInt(100), key)
-	pool.queueTx(tx1.Hash(), tx1)
-	pool.queueTx(tx2.Hash(), tx2)
-	pool.queueTx(tx3.Hash(), tx3)
+	pool.queueTx(tx1.Hash(), tx1, false)
+	pool.queueTx(tx2.Hash(), tx2, false)
+	pool.queueTx(tx3.Hash(), tx3, false)
 	from, _ = tx1.From()
 
 	pool.checkQueue()
@@ -120,8 +120,8 @@ func TestRemoveTx(t *testing.T) {
 	tx := transaction(0, big.NewInt(100), key)
 	from, _ := tx.From()
 	pool.currentState().AddBalance(from, big.NewInt(1))
-	pool.queueTx(tx.Hash(), tx)
-	pool.addTx(tx.Hash(), from, tx)
+	pool.queueTx(tx.Hash(), tx, false)
+	pool.addTx(tx.Hash(), from, &poolTx{Transaction: tx})
 	if len(pool.queue) != 1 {
 		t.Error("expected queue to be 1, got", len(pool.queue))
 	}
@@ -147,7 +147,7 @@ func TestNegativeValue(t *testing.T) {
 	tx, _ := types.NewTransaction(0, common.Address{}, big.NewInt(-1), big.NewInt(100), big.NewInt(1), nil).SignECDSA(key)
 	from, _ := tx.From()
 	pool.currentState().AddBalance(from, big.NewInt(1))
-	if err := pool.Add(tx); err != ErrNegativeValue {
+	if err := pool.Add(tx, false); err != ErrNegativeValue {
 		t.Error("expected", ErrNegativeValue, "got", err)
 	}
 }
@@ -165,14 +165,14 @@ func TestTransactionChainFork(t *testing.T) {
 	resetState()
 
 	tx := transaction(0, big.NewInt(100000), key)
-	if err := pool.add(tx); err != nil {
+	if err := pool.add(tx, false); err != nil {
 		t.Error("didn't expect error", err)
 	}
 	pool.RemoveTransactions([]*types.Transaction{tx})
 
 	// reset the pool's internal state
 	resetState()
-	if err := pool.add(tx); err != nil {
+	if err := pool.add(tx, false); err != nil {
 		t.Error("didn't expect error", err)
 	}
 }
@@ -191,10 +191,10 @@ func TestTransactionDoubleNonce(t *testing.T) {
 
 	tx := transaction(0, big.NewInt(100000), key)
 	tx2 := transaction(0, big.NewInt(1000000), key)
-	if err := pool.add(tx); err != nil {
+	if err := pool.add(tx, false); err != nil {
 		t.Error("didn't expect error", err)
 	}
-	if err := pool.add(tx2); err != nil {
+	if err := pool.add(tx2, false); err != nil {
 		t.Error("didn't expect error", err)
 	}
 
@@ -209,7 +209,7 @@ func TestMissingNonce(t *testing.T) {
 	addr := crypto.PubkeyToAddress(key.PublicKey)
 	pool.currentState().AddBalance(addr, big.NewInt(100000000000000))
 	tx := transaction(1, big.NewInt(100000), key)
-	if err := pool.add(tx); err != nil {
+	if err := pool.add(tx, false); err != nil {
 		t.Error("didn't expect error", err)
 	}
 	if len(pool.pending) != 0 {
