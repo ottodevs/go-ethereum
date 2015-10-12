@@ -775,31 +775,37 @@ func (self *BlockChain) reorg(oldBlock, newBlock *types.Block) error {
 }
 
 func (self *BlockChain) update() {
-	events := self.eventMux.Subscribe(queueEvent{})
+	// Subscribe to blockchain insertion event sets
+	eventCh := self.eventMux.Subscribe(queueEvent{}).Chan()
 	futureTimer := time.Tick(5 * time.Second)
-out:
+
 	for {
 		select {
-		case ev := <-events.Chan():
-			switch ev := ev.(type) {
-			case queueEvent:
-				for _, event := range ev.queue {
-					switch event := event.(type) {
-					case ChainEvent:
+		case rawEvent, ok := <-eventCh:
+			if !ok {
+				// Event subscription closed, set the channel to nil to stop spinning
+				eventCh = nil
+				continue
+			}
+			// If a valid event arrived, iterate over all the contained chain events
+			if event, ok := rawEvent.Data.(queueEvent); ok {
+				for _, e := range event.queue {
+					if e, ok := e.(ChainEvent); ok {
 						// We need some control over the mining operation. Acquiring locks and waiting for the miner to create new block takes too long
 						// and in most cases isn't even necessary.
-						if self.currentBlock.Hash() == event.Hash {
-							self.currentGasLimit = CalcGasLimit(event.Block)
-							self.eventMux.Post(ChainHeadEvent{event.Block})
+						if self.currentBlock.Hash() == e.Hash {
+							self.currentGasLimit = CalcGasLimit(e.Block)
+							self.eventMux.Post(ChainHeadEvent{e.Block})
 						}
 					}
-					self.eventMux.Post(event)
+					// Fire the insertion events individually too
+					self.eventMux.Post(e)
 				}
 			}
 		case <-futureTimer:
 			self.procFutureBlocks()
 		case <-self.quit:
-			break out
+			return
 		}
 	}
 }
