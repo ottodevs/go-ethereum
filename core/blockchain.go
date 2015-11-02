@@ -818,9 +818,15 @@ func (self *BlockChain) InsertHeaderChain(chain []*types.Header, checkFreq int) 
 // Rollback is designed to remove a chain of links from the database that aren't
 // certain enough to be valid.
 func (self *BlockChain) Rollback(chain []common.Hash) {
+	// Make sure others don't manipulate the thread or access state data. Note, lock
+	// order must be th same as used by the insertion method: first chain, then state.
+	self.chainmu.Lock()
+	defer self.chainmu.Unlock()
+
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
+	// Iterate over a recent batch of headers and rewind them
 	for i := len(chain) - 1; i >= 0; i-- {
 		hash := chain[i]
 
