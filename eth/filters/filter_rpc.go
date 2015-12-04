@@ -1,3 +1,19 @@
+// Copyright 2015 The go-ethereum Authors
+// This file is part of go-ethereum.
+//
+// go-ethereum is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// go-ethereum is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with go-ethereum. If not, see <http://www.gnu.org/licenses/>.
+
 package filters
 
 import (
@@ -8,14 +24,15 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	rpc "github.com/ethereum/go-ethereum/rpc/v2"
 	"encoding/json"
 	"fmt"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/event"
+	rpc "github.com/ethereum/go-ethereum/rpc/v2"
 )
 
 var (
@@ -30,41 +47,40 @@ const (
 	logFilterTy
 )
 
-
 type FilterService struct {
-	mux              *event.TypeMux
+	mux *event.TypeMux
 
-	quit             chan struct{}
-	chainDb          ethdb.Database
+	quit    chan struct{}
+	chainDb ethdb.Database
 
-	filterManager    *FilterSystem
+	filterManager *FilterSystem
 
-	filterMapMu      sync.RWMutex
-	filterMapping    map[string]int // maps between filter internal filter identifiers and external filter identifiers
+	filterMapMu   sync.RWMutex
+	filterMapping map[string]int // maps between filter internal filter identifiers and external filter identifiers
 
-	logMu            sync.RWMutex
-	logQueue         map[int]*logQueue
+	logMu    sync.RWMutex
+	logQueue map[int]*logQueue
 
-	blockMu          sync.RWMutex
-	blockQueue       map[int]*hashQueue
+	blockMu    sync.RWMutex
+	blockQueue map[int]*hashQueue
 
 	transactionMu    sync.RWMutex
 	transactionQueue map[int]*hashQueue
 
-									//	messagesMu       sync.RWMutex
-									//	messages         map[int]*whisperFilter
+	//	messagesMu       sync.RWMutex
+	//	messages         map[int]*whisperFilter
 
-	transactMu       sync.Mutex
+	transactMu sync.Mutex
 }
 
 func NewFilterService(chainDb ethdb.Database, mux *event.TypeMux) *FilterService {
 	svc := &FilterService{
-		mux: mux,
-		chainDb: chainDb,
-		filterManager: NewFilterSystem(mux),
-		filterMapping: make(map[string]int),
-		logQueue: make(map[int]*logQueue),
-		blockQueue: make(map[int]*hashQueue),
+		mux:              mux,
+		chainDb:          chainDb,
+		filterManager:    NewFilterSystem(mux),
+		filterMapping:    make(map[string]int),
+		logQueue:         make(map[int]*logQueue),
+		blockQueue:       make(map[int]*hashQueue),
 		transactionQueue: make(map[int]*hashQueue),
 	}
 	go svc.start()
@@ -78,7 +94,7 @@ func (s *FilterService) Stop() {
 func (s *FilterService) start() {
 	timer := time.NewTicker(2 * time.Second)
 	defer timer.Stop()
-	done:
+done:
 	for {
 		select {
 		case <-timer.C:
@@ -217,8 +233,8 @@ func (args *NewFilterArgs) UnmarshalJSON(data []byte) error {
 	type input struct {
 		From      *rpc.BlockNumber `json:"fromBlock"`
 		ToBlock   *rpc.BlockNumber `json:"toBlock"`
-		Addresses interface{}     `json:"address"`
-		Topics    interface{}     `json:"topics"`
+		Addresses interface{}      `json:"address"`
+		Topics    interface{}      `json:"topics"`
 	}
 
 	var raw input
@@ -350,7 +366,7 @@ func (s *FilterService) NewFilter(args NewFilterArgs) (string, error) {
 	return externalId, nil
 }
 
-func (s *FilterService) GetLogs(args NewFilterArgs) (vm.Logs) {
+func (s *FilterService) GetLogs(args NewFilterArgs) vm.Logs {
 	filter := New(s.chainDb)
 	filter.SetBeginBlock(args.FromBlock.Int64())
 	filter.SetEndBlock(args.ToBlock.Int64())
@@ -471,7 +487,7 @@ func (s *FilterService) GetFilterChanges(filterId string) interface{} {
 }
 
 type logQueue struct {
-	mu      sync.Mutex
+	mu sync.Mutex
 
 	logs    vm.Logs
 	timeout time.Time
@@ -496,7 +512,7 @@ func (l *logQueue) get() vm.Logs {
 }
 
 type hashQueue struct {
-	mu      sync.Mutex
+	mu sync.Mutex
 
 	hashes  []common.Hash
 	timeout time.Time

@@ -1,3 +1,19 @@
+// Copyright 2015 The go-ethereum Authors
+// This file is part of go-ethereum.
+//
+// go-ethereum is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// go-ethereum is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with go-ethereum. If not, see <http://www.gnu.org/licenses/>.
+
 package eth
 
 import (
@@ -233,7 +249,7 @@ func (s *PersonalService) NewAccount(password string) (common.Address, error) {
 // UnlockAccount will unlock the account associated with the given address with the given password for duration seconds.
 // It returns an indication if the action was successful.
 func (s *PersonalService) UnlockAccount(addr common.Address, password string, duration int) bool {
-	if err := s.am.TimedUnlock(addr, password, time.Duration(duration) * time.Second); err != nil {
+	if err := s.am.TimedUnlock(addr, password, time.Duration(duration)*time.Second); err != nil {
 		glog.V(logger.Info).Infof("%v\n", err)
 		return false
 	}
