@@ -30,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/logger"
 	"github.com/ethereum/go-ethereum/logger/glog"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 var (
@@ -181,12 +180,6 @@ func (pool *TxPool) SetLocal(tx *types.Transaction) {
 // validateTx checks whether a transaction is valid according
 // to the consensus rules.
 func (pool *TxPool) validateTx(tx *types.Transaction) error {
-	// Validate sender
-	var (
-		from common.Address
-		err  error
-	)
-
 	local := pool.localTx.contains(tx.Hash())
 	// Drop transactions under our own minimal accepted gas price
 	if !local && pool.minGasPrice.Cmp(tx.GasPrice()) > 0 {
@@ -198,15 +191,11 @@ func (pool *TxPool) validateTx(tx *types.Transaction) error {
 		return err
 	}
 
-	homestead := params.IsHomestead(GetHeadBlockNum(currentState.GetDB()))
-
-	// Validate the transaction sender and it's sig. Throw
-	// if the from fields is invalid.
-	if homestead {
-		from, err = tx.From()
-	} else {
-		from, err = tx.FromFrontier()
-	}
+	// TODO since this can't be checked using block numbers (since this process
+	// is time sensetive rather than block sensetive) we must, for now, use
+	// frontier rule sets. After frontier we must change this to homestead
+	// ruleset.
+	from, err := tx.FromFrontier()
 	if err != nil {
 		return ErrInvalidSender
 	}
@@ -241,8 +230,14 @@ func (pool *TxPool) validateTx(tx *types.Transaction) error {
 		return ErrInsufficientFunds
 	}
 
+	// TODO since this can't be checked using block numbers (since this process
+	// is time sensetive rather than block sensetive) we must, for now, use
+	// frontier rule sets. After frontier we must change this to homestead
+	// ruleset.
+	// Right now only a small subset of transaction would be allowed that
+	// could potentially have insufficient intrinsic gas at homestead.
 	// Should supply enough intrinsic gas
-	intrGas := IntrinsicGas(tx.Data(), MessageCreatesContract(tx), homestead)
+	intrGas := IntrinsicGas(tx.Data(), MessageCreatesContract(tx), false)
 	if tx.Gas().Cmp(intrGas) < 0 {
 		return ErrIntrinsicGas
 	}

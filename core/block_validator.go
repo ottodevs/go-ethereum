@@ -117,8 +117,7 @@ func (v *BlockValidator) ValidateState(block, parent *types.Block, statedb *stat
 	// For valid blocks this should always validate to true.
 	rbloom := types.CreateBloom(receipts)
 	if rbloom != header.Bloom {
-		//fmt.Printf("FUNKY: ValidateState: block number: %v\n", block.Number())
-		return fmt.Errorf("unable to replicate block's bloom=%x", rbloom)
+		return fmt.Errorf("unable to replicate block's bloom=%x vs calculated bloom=%x", header.Bloom, rbloom)
 	}
 	// Tre receipt Trie's root (R = (Tr [[H1, R1], ... [Hn, R1]]))
 	receiptSha := types.DeriveSha(receipts)

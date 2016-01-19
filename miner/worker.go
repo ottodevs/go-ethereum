@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/logger"
 	"github.com/ethereum/go-ethereum/logger/glog"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/pow"
 	"gopkg.in/fatih/set.v0"
 )
@@ -590,10 +591,26 @@ func (self *worker) commitUncle(work *Work, uncle *types.Header) error {
 }
 
 func (env *Work) commitTransactions(transactions types.Transactions, gasPrice *big.Int, bc *core.BlockChain) {
+	homestead := params.IsHomestead(env.header.Number)
+
 	gp := new(core.GasPool).AddGas(env.header.GasLimit)
 	for _, tx := range transactions {
-		// We can skip err. It has already been validated in the tx pool
-		from, _ := tx.From()
+		var (
+			from common.Address
+			err  error
+		)
+
+		if homestead {
+			from, err = tx.From()
+		} else {
+			from, err = tx.FromFrontier()
+		}
+		if err != nil {
+			glog.V(logger.Info).Infof("invalid transaction %x: %v\n", tx.Hash(), err)
+
+			env.ignoredTransactors.Add(from)
+			continue
+		}
 
 		// Check if it falls within margin. Txs from owned accounts are always processed.
 		if tx.GasPrice().Cmp(gasPrice) < 0 && !env.ownedAccounts.Has(from) {
@@ -628,7 +645,7 @@ func (env *Work) commitTransactions(transactions types.Transactions, gasPrice *b
 
 		env.state.StartRecord(tx.Hash(), common.Hash{}, 0)
 
-		err := env.commitTransaction(tx, bc, gp)
+		err = env.commitTransaction(tx, bc, gp)
 		switch {
 		case core.IsGasLimitErr(err):
 			// ignore the transactor so no nonce errors will be thrown for this account
