@@ -52,11 +52,11 @@ type SecureTrie struct {
 // trie is initially empty. Otherwise, New will panic if db is nil
 // and returns MissingNodeError if the root node cannot be found.
 // Accessing the trie loads nodes from db on demand.
-func NewSecure(root common.Hash, db Database) (*SecureTrie, error) {
+func NewSecure(shard []byte, root common.Hash, db Database) (*SecureTrie, error) {
 	if db == nil {
 		panic("NewSecure called with nil database")
 	}
-	trie, err := New(root, db)
+	trie, err := New(shard, root, db)
 	if err != nil {
 		return nil, err
 	}
@@ -143,8 +143,8 @@ func (t *SecureTrie) GetKey(shaKey []byte) []byte {
 //
 // Committing flushes nodes from memory. Subsequent Get calls will load nodes
 // from the database.
-func (t *SecureTrie) Commit() (root common.Hash, err error) {
-	return t.CommitTo(t.db)
+func (t *SecureTrie) Commit(shard []byte) (root common.Hash, err error) {
+	return t.CommitTo(shard, t.db)
 }
 
 // CommitTo writes all nodes and the secure hash pre-images to the given database.
@@ -153,7 +153,7 @@ func (t *SecureTrie) Commit() (root common.Hash, err error) {
 // Committing flushes nodes from memory. Subsequent Get calls will load nodes from
 // the trie's database. Calling code must ensure that the changes made to db are
 // written back to the trie's attached database before using the trie.
-func (t *SecureTrie) CommitTo(db DatabaseWriter) (root common.Hash, err error) {
+func (t *SecureTrie) CommitTo(shard []byte, db DatabaseWriter) (root common.Hash, err error) {
 	if len(t.secKeyCache) > 0 {
 		for hk, key := range t.secKeyCache {
 			if err := db.Put(t.secKey([]byte(hk)), key); err != nil {
@@ -162,7 +162,7 @@ func (t *SecureTrie) CommitTo(db DatabaseWriter) (root common.Hash, err error) {
 		}
 		t.secKeyCache = make(map[string][]byte)
 	}
-	n, err := t.hashRoot(db)
+	n, err := t.hashRoot(shard, db)
 	if err != nil {
 		return (common.Hash{}), err
 	}

@@ -68,7 +68,7 @@ func NewBlockValidator(config *ChainConfig, blockchain *BlockChain, pow pow.PoW)
 // false positives where a header is present but the state is not.
 func (v *BlockValidator) ValidateBlock(block *types.Block) error {
 	if v.bc.HasBlock(block.Hash()) {
-		if _, err := state.New(block.Root(), v.bc.chainDb); err == nil {
+		if _, err := state.New(block.NumberU64(), block.Root(), v.bc.chainDb); err == nil {
 			return &KnownBlockError{block.Number(), block.Hash()}
 		}
 	}
@@ -76,7 +76,7 @@ func (v *BlockValidator) ValidateBlock(block *types.Block) error {
 	if parent == nil {
 		return ParentError(block.ParentHash())
 	}
-	if _, err := state.New(parent.Root(), v.bc.chainDb); err != nil {
+	if _, err := state.New(parent.NumberU64(), parent.Root(), v.bc.chainDb); err != nil {
 		return ParentError(block.ParentHash())
 	}
 

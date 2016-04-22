@@ -261,7 +261,7 @@ func (self *BlockChain) FastSyncCommitHead(hash common.Hash) error {
 	if block == nil {
 		return fmt.Errorf("non existent block [%x…]", hash[:4])
 	}
-	if _, err := trie.NewSecure(block.Root(), self.chainDb); err != nil {
+	if _, err := trie.NewSecure(nil, block.Root(), self.chainDb); err != nil {
 		return err
 	}
 	// If all checks out, manually set the head block
@@ -349,7 +349,8 @@ func (self *BlockChain) AuxValidator() pow.PoW { return self.pow }
 
 // State returns a new mutable state based on the current HEAD block.
 func (self *BlockChain) State() (*state.StateDB, error) {
-	return state.New(self.CurrentBlock().Root(), self.chainDb)
+	block := self.CurrentBlock()
+	return state.New(block.NumberU64(), block.Root(), self.chainDb)
 }
 
 // Reset purges the entire blockchain, restoring it to its genesis state.
@@ -497,7 +498,7 @@ func (bc *BlockChain) HasBlockAndState(hash common.Hash) bool {
 		return false
 	}
 	// Ensure the associated state is also present
-	_, err := state.New(block.Root(), bc.chainDb)
+	_, err := state.New(block.NumberU64(), block.Root(), bc.chainDb)
 	return err == nil
 }
 
@@ -885,7 +886,8 @@ func (self *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 
 		// Create a new statedb using the parent block and report an
 		// error if it fails.
-		statedb, err := state.New(self.GetBlock(block.ParentHash()).Root(), self.chainDb)
+		parent := self.GetBlock(block.ParentHash())
+		statedb, err := state.New(parent.NumberU64(), parent.Root(), self.chainDb)
 		if err != nil {
 			reportBlock(block, err)
 			return i, err
@@ -903,7 +905,7 @@ func (self *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 			return i, err
 		}
 		// Write state changes to database
-		_, err = statedb.Commit()
+		_, err = statedb.Commit(block.NumberU64())
 		if err != nil {
 			return i, err
 		}

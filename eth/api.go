@@ -95,7 +95,7 @@ func stateAndBlockByNumber(m *miner.Miner, bc *core.BlockChain, blockNr rpc.Bloc
 	if block == nil {
 		return nil, nil, nil
 	}
-	stateDb, err := state.New(block.Root(), chainDb)
+	stateDb, err := state.New(block.NumberU64(), block.Root(), chainDb)
 	return stateDb, block, err
 }
 
@@ -1541,7 +1541,7 @@ func (api *PublicDebugAPI) DumpBlock(number uint64) (state.World, error) {
 	if block == nil {
 		return state.World{}, fmt.Errorf("block #%d not found", number)
 	}
-	stateDb, err := state.New(block.Root(), api.eth.ChainDb())
+	stateDb, err := state.New(block.NumberU64(), block.Root(), api.eth.ChainDb())
 	if err != nil {
 		return state.World{}, err
 	}
@@ -1709,7 +1709,8 @@ func (api *PrivateDebugAPI) traceBlock(block *types.Block, config *vm.Config) (b
 	if err := core.ValidateHeader(api.config, blockchain.AuxValidator(), block.Header(), blockchain.GetHeader(block.ParentHash()), true, false); err != nil {
 		return false, collector.traces, err
 	}
-	statedb, err := state.New(blockchain.GetBlock(block.ParentHash()).Root(), api.eth.ChainDb())
+	parent := blockchain.GetBlock(block.ParentHash())
+	statedb, err := state.New(parent.NumberU64(), parent.Root(), api.eth.ChainDb())
 	if err != nil {
 		return false, collector.traces, err
 	}
@@ -1820,7 +1821,7 @@ func (s *PrivateDebugAPI) TraceTransaction(txHash common.Hash, logger *vm.LogCon
 	if parent == nil {
 		return nil, fmt.Errorf("block parent %x not found", block.ParentHash())
 	}
-	stateDb, err := state.New(parent.Root(), s.eth.ChainDb())
+	stateDb, err := state.New(parent.NumberU64(), parent.Root(), s.eth.ChainDb())
 	if err != nil {
 		return nil, err
 	}

@@ -74,7 +74,7 @@ func TestMissingNode(t *testing.T) {
 	trie, _ := New(common.Hash{}, db)
 	updateString(trie, "120000", "qwerqwerqwerqwerqwerqwerqwerqwer")
 	updateString(trie, "123456", "asdfasdfasdfasdfasdfasdfasdfasdf")
-	root, _ := trie.Commit()
+	root, _ := trie.Commit(0)
 
 	ClearGlobalCache()
 
@@ -159,7 +159,7 @@ func TestInsert(t *testing.T) {
 	updateString(trie, "A", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 
 	exp = common.HexToHash("d23786fb4a010da3ce639d66d5e904a11dbc02746d1ce25029e53290cabf28ab")
-	root, err := trie.Commit()
+	root, err := trie.Commit(0)
 	if err != nil {
 		t.Fatalf("commit error: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestGet(t *testing.T) {
 		if i == 1 {
 			return
 		}
-		trie.Commit()
+		trie.Commit(0)
 	}
 }
 
@@ -257,7 +257,7 @@ func TestReplication(t *testing.T) {
 	for _, val := range vals {
 		updateString(trie, val.k, val.v)
 	}
-	exp, err := trie.Commit()
+	exp, err := trie.Commit(0)
 	if err != nil {
 		t.Fatalf("commit error: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestReplication(t *testing.T) {
 			t.Errorf("trie2 doesn't have %q => %q", kv.k, kv.v)
 		}
 	}
-	hash, err := trie2.Commit()
+	hash, err := trie2.Commit(0)
 	if err != nil {
 		t.Fatalf("commit error: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestParanoia(t *testing.T) {
 	for _, val := range vals {
 		updateString(trie, val.k, val.v)
 	}
-	trie.Commit()
+	trie.Commit(0)
 
 	ok, t2 := paranoiaCheck(trie)
 	if !ok {
@@ -347,7 +347,7 @@ func TestOutput(t *testing.T) {
 	fmt.Println("############################## FULL ################################")
 	fmt.Println(trie.root)
 
-	trie.Commit()
+	trie.Commit(0)
 	fmt.Println("############################## SMALL ################################")
 	trie2, _ := New(trie.Hash(), trie.db)
 	getString(trie2, base+"20")
@@ -423,7 +423,7 @@ func benchGet(b *testing.B, commit bool) {
 	}
 	binary.LittleEndian.PutUint64(k, benchElemCount/2)
 	if commit {
-		trie.Commit()
+		trie.Commit(0)
 	}
 
 	b.ResetTimer()

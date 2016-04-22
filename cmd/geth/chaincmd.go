@@ -178,7 +178,7 @@ func dump(ctx *cli.Context) {
 			fmt.Println("{}")
 			utils.Fatalf("block not found")
 		} else {
-			state, err := state.New(block.Root(), chainDb)
+			state, err := state.New(block.NumberU64(), block.Root(), chainDb)
 			if err != nil {
 				utils.Fatalf("could not create new state: %v", err)
 				return

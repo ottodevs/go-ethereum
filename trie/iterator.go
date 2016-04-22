@@ -110,7 +110,7 @@ func (self *Iterator) next(node interface{}, key []byte, isIterStart bool) []byt
 		}
 
 	case hashNode:
-		rn, err := self.trie.resolveHash(node, nil, nil)
+		_, rn, err := self.trie.resolveHash(nil, node, nil, nil)
 		if err != nil && glog.V(logger.Error) {
 			glog.Errorf("Unhandled trie error: %v", err)
 		}
@@ -141,7 +141,7 @@ func (self *Iterator) key(node interface{}) []byte {
 			}
 		}
 	case hashNode:
-		rn, err := self.trie.resolveHash(node, nil, nil)
+		_, rn, err := self.trie.resolveHash(nil, node, nil, nil)
 		if err != nil && glog.V(logger.Error) {
 			glog.Errorf("Unhandled trie error: %v", err)
 		}
@@ -248,7 +248,7 @@ func (it *NodeIterator) step() error {
 			}
 			parent.child++
 
-			node, err := it.trie.resolveHash(hash, nil, nil)
+			_, node, err := it.trie.resolveHash(nil, hash, nil, nil)
 			if err != nil {
 				return err
 			}

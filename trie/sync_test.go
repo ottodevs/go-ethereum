@@ -49,7 +49,7 @@ func makeTestTrie() (ethdb.Database, *Trie, map[string][]byte) {
 			trie.Update(key, val)
 		}
 	}
-	trie.Commit()
+	trie.Commit(0)
 
 	// Remove any potentially cached data from the test trie creation
 	globalCache.Clear()

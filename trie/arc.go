@@ -44,6 +44,7 @@ type arc struct {
 
 type entry struct {
 	key   hashNode
+	shard []byte
 	value node
 	ll    *list.List
 	el    *list.Element
@@ -76,15 +77,16 @@ func (a *arc) Clear() {
 
 // Put inserts a new key-value pair into the cache.
 // This optimizes future access to this entry (side effect).
-func (a *arc) Put(key hashNode, value node) bool {
+func (a *arc) Put(key hashNode, shard []byte, value node) bool {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 	ent, ok := a.cache[string(key)]
 	if ok != true {
-		ent = &entry{key: key, value: value}
+		ent = &entry{key: key, shard: shard, value: value}
 		a.req(ent)
 		a.cache[string(key)] = ent
 	} else {
+		ent.shard = shard
 		ent.value = value
 		a.req(ent)
 	}
@@ -93,15 +95,15 @@ func (a *arc) Put(key hashNode, value node) bool {
 
 // Get retrieves a previously via Set inserted entry.
 // This optimizes future access to this entry (side effect).
-func (a *arc) Get(key hashNode) (value node, ok bool) {
+func (a *arc) Get(key hashNode) (shard []byte, value node, ok bool) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 	ent, ok := a.cache[string(key)]
 	if ok {
 		a.req(ent)
-		return ent.value, ent.value != nil
+		return ent.shard, ent.value, ent.value != nil
 	}
-	return nil, false
+	return nil, nil, false
 }
 
 func (a *arc) req(ent *entry) {
@@ -178,10 +180,12 @@ func (a *arc) delLRU(list *list.List) {
 func (a *arc) replace(ent *entry) {
 	if a.t1.Len() > 0 && ((a.t1.Len() > a.p) || (ent.ll == a.b2 && a.t1.Len() == a.p)) {
 		lru := a.t1.Back().Value.(*entry)
+		lru.shard = nil
 		lru.value = nil
 		lru.setMRU(a.b1)
 	} else {
 		lru := a.t2.Back().Value.(*entry)
+		lru.shard = nil
 		lru.value = nil
 		lru.setMRU(a.b2)
 	}

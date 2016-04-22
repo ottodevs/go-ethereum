@@ -69,9 +69,10 @@ type DatabaseWriter interface {
 //
 // Trie is not safe for concurrent use.
 type Trie struct {
-	root         node
-	db           Database
-	originalRoot common.Hash
+	root          node
+	db            Database
+	originalShard []byte
+	originalRoot  common.Hash
 	*hasher
 }
 
@@ -81,13 +82,13 @@ type Trie struct {
 // trie is initially empty and does not require a database. Otherwise,
 // New will panic if db is nil and returns a MissingNodeError if root does
 // not exist in the database. Accessing the trie loads nodes from db on demand.
-func New(root common.Hash, db Database) (*Trie, error) {
-	trie := &Trie{db: db, originalRoot: root}
+func New(shard []byte, root common.Hash, db Database) (*Trie, error) {
+	trie := &Trie{originalShard: shard, db: db, originalRoot: root}
 	if (root != common.Hash{}) && root != emptyRoot {
 		if db == nil {
 			panic("trie.New: cannot use existing root without a database")
 		}
-		if v, _ := trie.db.Get(root[:]); len(v) == 0 {
+		if prefix, _ := trie.db.Get(root[:]); len(prefix) == 0 {
 			return nil, &MissingNodeError{
 				RootHash: root,
 				NodeHash: root,
@@ -135,7 +136,7 @@ func (t *Trie) TryGet(key []byte) ([]byte, error) {
 			return nil, nil
 		case hashNode:
 			var err error
-			tn, err = t.resolveHash(n, key[:pos], key[pos:])
+			_, tn, err = t.resolveHash(t.originalShard, n, key[:pos], key[pos:])
 			if err != nil {
 				return nil, err
 			}
@@ -169,13 +170,13 @@ func (t *Trie) Update(key, value []byte) {
 func (t *Trie) TryUpdate(key, value []byte) error {
 	k := compactHexDecode(key)
 	if len(value) != 0 {
-		n, err := t.insert(t.root, nil, k, valueNode(value))
+		n, err := t.insert(t.originalShard, t.root, nil, k, valueNode(value))
 		if err != nil {
 			return err
 		}
 		t.root = n
 	} else {
-		n, err := t.delete(t.root, nil, k)
+		n, err := t.delete(t.originalShard, t.root, nil, k)
 		if err != nil {
 			return err
 		}
@@ -184,7 +185,7 @@ func (t *Trie) TryUpdate(key, value []byte) error {
 	return nil
 }
 
-func (t *Trie) insert(n node, prefix, key []byte, value node) (node, error) {
+func (t *Trie) insert(shard []byte, n node, prefix, key []byte, value node) (node, error) {
 	if len(key) == 0 {
 		return value, nil
 	}
@@ -194,20 +195,22 @@ func (t *Trie) insert(n node, prefix, key []byte, value node) (node, error) {
 		// If the whole key matches, keep this short node as is
 		// and only update the value.
 		if matchlen == len(n.Key) {
-			nn, err := t.insert(n.Val, append(prefix, key[:matchlen]...), key[matchlen:], value)
+			nn, err := t.insert(shard, n.Val, append(prefix, key[:matchlen]...), key[matchlen:], value)
 			if err != nil {
 				return nil, err
 			}
 			return shortNode{n.Key, nn}, nil
 		}
 		// Otherwise branch out at the index where they differ.
-		var branch fullNode
-		var err error
-		branch[n.Key[matchlen]], err = t.insert(nil, append(prefix, n.Key[:matchlen+1]...), n.Key[matchlen+1:], n.Val)
+		var (
+			branch fullNode
+			err    error
+		)
+		branch[n.Key[matchlen]], err = t.insert(shard, nil, append(prefix, n.Key[:matchlen+1]...), n.Key[matchlen+1:], n.Val)
 		if err != nil {
 			return nil, err
 		}
-		branch[key[matchlen]], err = t.insert(nil, append(prefix, key[:matchlen+1]...), key[matchlen+1:], value)
+		branch[key[matchlen]], err = t.insert(shard, nil, append(prefix, key[:matchlen+1]...), key[matchlen+1:], value)
 		if err != nil {
 			return nil, err
 		}
@@ -219,7 +222,7 @@ func (t *Trie) insert(n node, prefix, key []byte, value node) (node, error) {
 		return shortNode{key[:matchlen], branch}, nil
 
 	case fullNode:
-		nn, err := t.insert(n[key[0]], append(prefix, key[0]), key[1:], value)
+		nn, err := t.insert(shard, n[key[0]], append(prefix, key[0]), key[1:], value)
 		if err != nil {
 			return nil, err
 		}
@@ -236,11 +239,11 @@ func (t *Trie) insert(n node, prefix, key []byte, value node) (node, error) {
 		//
 		// TODO: track whether insertion changed the value and keep
 		// n as a hash node if it didn't.
-		rn, err := t.resolveHash(n, prefix, key)
+		s, rn, err := t.resolveHash(shard, n, prefix, key)
 		if err != nil {
 			return nil, err
 		}
-		return t.insert(rn, prefix, key, value)
+		return t.insert(s, rn, prefix, key, value)
 
 	default:
 		panic(fmt.Sprintf("%T: invalid node: %v", n, n))
@@ -258,7 +261,7 @@ func (t *Trie) Delete(key []byte) {
 // If a node was not found in the database, a MissingNodeError is returned.
 func (t *Trie) TryDelete(key []byte) error {
 	k := compactHexDecode(key)
-	n, err := t.delete(t.root, nil, k)
+	n, err := t.delete(t.originalShard, t.root, nil, k)
 	if err != nil {
 		return err
 	}
@@ -269,7 +272,7 @@ func (t *Trie) TryDelete(key []byte) error {
 // delete returns the new root of the trie with key deleted.
 // It reduces the trie to minimal form by simplifying
 // nodes on the way up after deleting recursively.
-func (t *Trie) delete(n node, prefix, key []byte) (node, error) {
+func (t *Trie) delete(shard []byte, n node, prefix, key []byte) (node, error) {
 	switch n := n.(type) {
 	case shortNode:
 		matchlen := prefixLen(key, n.Key)
@@ -283,7 +286,7 @@ func (t *Trie) delete(n node, prefix, key []byte) (node, error) {
 		// from the subtrie. Child can never be nil here since the
 		// subtrie must contain at least two other values with keys
 		// longer than n.Key.
-		child, err := t.delete(n.Val, append(prefix, key[:len(n.Key)]...), key[len(n.Key):])
+		child, err := t.delete(shard, n.Val, append(prefix, key[:len(n.Key)]...), key[len(n.Key):])
 		if err != nil {
 			return nil, err
 		}
@@ -301,7 +304,7 @@ func (t *Trie) delete(n node, prefix, key []byte) (node, error) {
 		}
 
 	case fullNode:
-		nn, err := t.delete(n[key[0]], append(prefix, key[0]), key[1:])
+		nn, err := t.delete(shard, n[key[0]], append(prefix, key[0]), key[1:])
 		if err != nil {
 			return nil, err
 		}
@@ -334,7 +337,7 @@ func (t *Trie) delete(n node, prefix, key []byte) (node, error) {
 				// shortNode{..., shortNode{...}}.  Since the entry
 				// might not be loaded yet, resolve it just for this
 				// check.
-				cnode, err := t.resolve(n[pos], prefix, []byte{byte(pos)})
+				_, cnode, err := t.resolve(shard, n[pos], prefix, []byte{byte(pos)})
 				if err != nil {
 					return nil, err
 				}
@@ -360,11 +363,11 @@ func (t *Trie) delete(n node, prefix, key []byte) (node, error) {
 		//
 		// TODO: track whether deletion actually hit a key and keep
 		// n as a hash node if it didn't.
-		rn, err := t.resolveHash(n, prefix, key)
+		s, rn, err := t.resolveHash(shard, n, prefix, key)
 		if err != nil {
 			return nil, err
 		}
-		return t.delete(rn, prefix, key)
+		return t.delete(s, rn, prefix, key)
 
 	default:
 		panic(fmt.Sprintf("%T: invalid node: %v (%v)", n, n, key))
@@ -378,20 +381,39 @@ func concat(s1 []byte, s2 ...byte) []byte {
 	return r
 }
 
-func (t *Trie) resolve(n node, prefix, suffix []byte) (node, error) {
+func (t *Trie) resolve(shard []byte, n node, prefix, suffix []byte) ([]byte, node, error) {
 	if n, ok := n.(hashNode); ok {
-		return t.resolveHash(n, prefix, suffix)
+		s, n, err := t.resolveHash(shard, n, prefix, suffix)
+		return s, n, err
 	}
-	return n, nil
+	return shard, n, nil
 }
 
-func (t *Trie) resolveHash(n hashNode, prefix, suffix []byte) (node, error) {
-	if v, ok := globalCache.Get(n); ok {
-		return v, nil
+func (t *Trie) resolveHash(shard []byte, n hashNode, prefix, suffix []byte) ([]byte, node, error) {
+	// Short circuit if the node is already cached
+	if s, v, ok := globalCache.Get(n); ok {
+		return s, v, nil
 	}
-	enc, err := t.db.Get(n)
+	// Try to resolve the node within the specified key shard
+	var (
+		enc []byte
+		err error
+	)
+	if len(shard) > 0 {
+		if enc, err = t.db.Get(append(shard, n...)); err != nil || enc == nil {
+			//fmt.Printf("Guessed %x, wrong...\n", shard)
+			shard = nil
+		}
+	}
+	// If not found in requested shard, lookup the actual shard
+	if shard == nil {
+		if shard, err = t.db.Get(n); err == nil {
+			//fmt.Printf("True %x\n", shard)
+			enc, err = t.db.Get(append(shard, n...))
+		}
+	}
 	if err != nil || enc == nil {
-		return nil, &MissingNodeError{
+		return nil, nil, &MissingNodeError{
 			RootHash:  t.originalRoot,
 			NodeHash:  common.BytesToHash(n),
 			Key:       compactHexEncode(append(prefix, suffix...)),
@@ -401,9 +423,9 @@ func (t *Trie) resolveHash(n hashNode, prefix, suffix []byte) (node, error) {
 	}
 	dec := mustDecodeNode(n, enc)
 	if dec != nil {
-		globalCache.Put(n, dec)
+		globalCache.Put(shard, n, dec)
 	}
-	return dec, nil
+	return shard, dec, nil
 }
 
 // Root returns the root hash of the trie.
@@ -413,7 +435,7 @@ func (t *Trie) Root() []byte { return t.Hash().Bytes() }
 // Hash returns the root hash of the trie. It does not write to the
 // database and can be used even if the trie doesn't have one.
 func (t *Trie) Hash() common.Hash {
-	root, _ := t.hashRoot(nil)
+	root, _ := t.hashRoot(nil, nil)
 	return common.BytesToHash(root.(hashNode))
 }
 
@@ -422,11 +444,11 @@ func (t *Trie) Hash() common.Hash {
 //
 // Committing flushes nodes from memory.
 // Subsequent Get calls will load nodes from the database.
-func (t *Trie) Commit() (root common.Hash, err error) {
+func (t *Trie) Commit(shard []byte) (root common.Hash, err error) {
 	if t.db == nil {
 		panic("Commit called on trie with nil database")
 	}
-	return t.CommitTo(t.db)
+	return t.CommitTo(shard, t.db)
 }
 
 // CommitTo writes all nodes to the given database.
@@ -436,8 +458,8 @@ func (t *Trie) Commit() (root common.Hash, err error) {
 // load nodes from the trie's database. Calling code must ensure that
 // the changes made to db are written back to the trie's attached
 // database before using the trie.
-func (t *Trie) CommitTo(db DatabaseWriter) (root common.Hash, err error) {
-	n, err := t.hashRoot(db)
+func (t *Trie) CommitTo(shard []byte, db DatabaseWriter) (root common.Hash, err error) {
+	n, err := t.hashRoot(shard, db)
 	if err != nil {
 		return (common.Hash{}), err
 	}
@@ -445,14 +467,14 @@ func (t *Trie) CommitTo(db DatabaseWriter) (root common.Hash, err error) {
 	return common.BytesToHash(n.(hashNode)), nil
 }
 
-func (t *Trie) hashRoot(db DatabaseWriter) (node, error) {
+func (t *Trie) hashRoot(shard []byte, db DatabaseWriter) (node, error) {
 	if t.root == nil {
 		return hashNode(emptyRoot.Bytes()), nil
 	}
 	if t.hasher == nil {
 		t.hasher = newHasher()
 	}
-	return t.hasher.hash(t.root, db, true)
+	return t.hasher.hash(shard, t.root, db, true)
 }
 
 type hasher struct {
@@ -464,12 +486,12 @@ func newHasher() *hasher {
 	return &hasher{tmp: new(bytes.Buffer), sha: sha3.NewKeccak256()}
 }
 
-func (h *hasher) hash(n node, db DatabaseWriter, force bool) (node, error) {
-	hashed, err := h.replaceChildren(n, db)
+func (h *hasher) hash(shard []byte, n node, db DatabaseWriter, force bool) (node, error) {
+	hashed, err := h.replaceChildren(shard, n, db)
 	if err != nil {
 		return hashNode{}, err
 	}
-	if n, err = h.store(hashed, db, force); err != nil {
+	if n, err = h.store(shard, hashed, db, force); err != nil {
 		return hashNode{}, err
 	}
 	return n, nil
@@ -477,13 +499,13 @@ func (h *hasher) hash(n node, db DatabaseWriter, force bool) (node, error) {
 
 // hashChildren replaces child nodes of n with their hashes if the encoded
 // size of the child is larger than a hash.
-func (h *hasher) replaceChildren(n node, db DatabaseWriter) (node, error) {
+func (h *hasher) replaceChildren(shard []byte, n node, db DatabaseWriter) (node, error) {
 	var err error
 	switch n := n.(type) {
 	case shortNode:
 		n.Key = compactEncode(n.Key)
 		if _, ok := n.Val.(valueNode); !ok {
-			if n.Val, err = h.hash(n.Val, db, false); err != nil {
+			if n.Val, err = h.hash(shard, n.Val, db, false); err != nil {
 				return n, err
 			}
 		}
@@ -495,7 +517,7 @@ func (h *hasher) replaceChildren(n node, db DatabaseWriter) (node, error) {
 	case fullNode:
 		for i := 0; i < 16; i++ {
 			if n[i] != nil {
-				if n[i], err = h.hash(n[i], db, false); err != nil {
+				if n[i], err = h.hash(shard, n[i], db, false); err != nil {
 					return n, err
 				}
 			} else {
@@ -512,7 +534,7 @@ func (h *hasher) replaceChildren(n node, db DatabaseWriter) (node, error) {
 	}
 }
 
-func (h *hasher) store(n node, db DatabaseWriter, force bool) (node, error) {
+func (h *hasher) store(shard []byte, n node, db DatabaseWriter, force bool) (node, error) {
 	// Don't store hashes or empty nodes.
 	if _, isHash := n.(hashNode); n == nil || isHash {
 		return n, nil
@@ -528,10 +550,16 @@ func (h *hasher) store(n node, db DatabaseWriter, force bool) (node, error) {
 	// Larger nodes are replaced by their hash and stored in the database.
 	h.sha.Reset()
 	h.sha.Write(h.tmp.Bytes())
-	key := hashNode(h.sha.Sum(nil))
+
+	hash := hashNode(h.sha.Sum(nil))
 	if db != nil {
-		err := db.Put(key, h.tmp.Bytes())
-		return key, err
+		if err := db.Put(append(shard, hash...), h.tmp.Bytes()); err != nil {
+			return nil, err
+		}
+		if err := db.Put(hash, shard); err != nil {
+			return nil, err
+		}
+		return hash, nil
 	}
-	return key, nil
+	return hash, nil
 }

@@ -39,7 +39,7 @@ func TestIterator(t *testing.T) {
 		v[val.k] = false
 		trie.Update([]byte(val.k), []byte(val.v))
 	}
-	trie.Commit()
+	trie.Commit(0)
 
 	it := NewIterator(trie)
 	for it.Next() {

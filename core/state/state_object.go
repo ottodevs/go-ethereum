@@ -93,7 +93,7 @@ func NewStateObject(address common.Address, db trie.Database) *StateObject {
 		codeHash: emptyCodeHash,
 		storage:  make(Storage),
 	}
-	object.trie, _ = trie.NewSecure(common.Hash{}, db)
+	object.trie, _ = trie.NewSecure(nil, common.Hash{}, db)
 	return object
 }
 
@@ -282,7 +282,7 @@ func DecodeObject(address common.Address, db trie.Database, data []byte) (*State
 	if err = rlp.DecodeBytes(data, &ext); err != nil {
 		return nil, err
 	}
-	if obj.trie, err = trie.NewSecure(ext.Root, db); err != nil {
+	if obj.trie, err = trie.NewSecure(nil, ext.Root, db); err != nil {
 		return nil, err
 	}
 	if !bytes.Equal(ext.CodeHash, emptyCodeHash) {

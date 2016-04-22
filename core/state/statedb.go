@@ -18,6 +18,7 @@
 package state
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/big"
 
@@ -40,8 +41,9 @@ var StartingNonce uint64
 // * Contracts
 // * Accounts
 type StateDB struct {
-	db   ethdb.Database
-	trie *trie.SecureTrie
+	db    ethdb.Database
+	block uint64
+	trie  *trie.SecureTrie
 
 	stateObjects map[string]*StateObject
 
@@ -54,13 +56,14 @@ type StateDB struct {
 }
 
 // Create a new state from a given trie
-func New(root common.Hash, db ethdb.Database) (*StateDB, error) {
-	tr, err := trie.NewSecure(root, db)
+func New(block uint64, root common.Hash, db ethdb.Database) (*StateDB, error) {
+	tr, err := trie.NewSecure(makeShard(block), root, db)
 	if err != nil {
 		return nil, err
 	}
 	return &StateDB{
 		db:           db,
+		block:        block,
 		trie:         tr,
 		stateObjects: make(map[string]*StateObject),
 		refund:       new(big.Int),
@@ -299,7 +302,7 @@ func (self *StateDB) CreateAccount(addr common.Address) vm.Account {
 
 func (self *StateDB) Copy() *StateDB {
 	// ignore error - we assume state-to-be-copied always exists
-	state, _ := New(common.Hash{}, self.db)
+	state, _ := New(self.block, common.Hash{}, self.db)
 	state.trie = self.trie
 	for k, stateObject := range self.stateObjects {
 		state.stateObjects[k] = stateObject.Copy()
@@ -349,21 +352,21 @@ func (s *StateDB) IntermediateRoot() common.Hash {
 }
 
 // Commit commits all state changes to the database.
-func (s *StateDB) Commit() (root common.Hash, err error) {
-	root, batch := s.CommitBatch()
+func (s *StateDB) Commit(block uint64) (root common.Hash, err error) {
+	root, batch := s.CommitBatch(block)
 	return root, batch.Write()
 }
 
 // CommitBatch commits all state changes to a write batch but does not
 // execute the batch. It is used to validate state changes against
 // the root hash stored in a block.
-func (s *StateDB) CommitBatch() (root common.Hash, batch ethdb.Batch) {
+func (s *StateDB) CommitBatch(block uint64) (root common.Hash, batch ethdb.Batch) {
 	batch = s.db.NewBatch()
-	root, _ = s.commit(batch)
+	root, _ = s.commit(makeShard(block), batch)
 	return root, batch
 }
 
-func (s *StateDB) commit(db trie.DatabaseWriter) (common.Hash, error) {
+func (s *StateDB) commit(shard []byte, db trie.DatabaseWriter) (common.Hash, error) {
 	s.refund = new(big.Int)
 
 	for _, stateObject := range s.stateObjects {
@@ -385,7 +388,7 @@ func (s *StateDB) commit(db trie.DatabaseWriter) (common.Hash, error) {
 			// This updates the trie root internally, so
 			// getting the root hash of the storage trie
 			// through UpdateStateObject is fast.
-			if _, err := stateObject.trie.CommitTo(db); err != nil {
+			if _, err := stateObject.trie.CommitTo(shard, db); err != nil {
 				return common.Hash{}, err
 			}
 			// Update the object in the account trie.
@@ -393,7 +396,7 @@ func (s *StateDB) commit(db trie.DatabaseWriter) (common.Hash, error) {
 		}
 		stateObject.dirty = false
 	}
-	return s.trie.CommitTo(db)
+	return s.trie.CommitTo(shard, db)
 }
 
 func (self *StateDB) Refunds() *big.Int {
@@ -405,4 +408,11 @@ func (self *StateDB) CreateOutputForDiff() {
 	for _, stateObject := range self.stateObjects {
 		stateObject.CreateOutputForDiff()
 	}
+}
+
+// makeShard converts a block number to a state trie shard prefix.
+func makeShard(block uint64) []byte {
+	shard := make([]byte, 4)
+	binary.BigEndian.PutUint32(shard, uint32(block/64000))
+	return shard
 }

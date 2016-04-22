@@ -181,7 +181,7 @@ func GenerateChain(parent *types.Block, db ethdb.Database, n int, gen func(int, 
 			gen(i, b)
 		}
 		AccumulateRewards(statedb, h, b.uncles)
-		root, err := statedb.Commit()
+		root, err := statedb.Commit(h.Number.Uint64())
 		if err != nil {
 			panic(fmt.Sprintf("state write error: %v", err))
 		}
@@ -189,7 +189,7 @@ func GenerateChain(parent *types.Block, db ethdb.Database, n int, gen func(int, 
 		return types.NewBlock(h, b.txs, b.uncles, b.receipts), b.receipts
 	}
 	for i := 0; i < n; i++ {
-		statedb, err := state.New(parent.Root(), db)
+		statedb, err := state.New(parent.NumberU64(), parent.Root(), db)
 		if err != nil {
 			panic(err)
 		}

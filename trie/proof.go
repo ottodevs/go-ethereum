@@ -41,7 +41,8 @@ func (t *Trie) Prove(key []byte) []rlp.RawValue {
 	// Collect all nodes on the path to key.
 	key = compactHexDecode(key)
 	nodes := []node{}
-	tn := t.root
+
+	ts, tn := []byte(nil), t.root
 	for len(key) > 0 && tn != nil {
 		switch n := tn.(type) {
 		case shortNode:
@@ -59,7 +60,7 @@ func (t *Trie) Prove(key []byte) []rlp.RawValue {
 			nodes = append(nodes, n)
 		case hashNode:
 			var err error
-			tn, err = t.resolveHash(n, nil, nil)
+			ts, tn, err = t.resolveHash(ts, n, nil, nil)
 			if err != nil {
 				if glog.V(logger.Error) {
 					glog.Errorf("Unhandled trie error: %v", err)
@@ -77,8 +78,8 @@ func (t *Trie) Prove(key []byte) []rlp.RawValue {
 	for i, n := range nodes {
 		// Don't bother checking for errors here since hasher panics
 		// if encoding doesn't work and we're not writing to any database.
-		n, _ = t.hasher.replaceChildren(n, nil)
-		hn, _ := t.hasher.store(n, nil, false)
+		n, _ = t.hasher.replaceChildren(nil, n, nil)
+		hn, _ := t.hasher.store(nil, n, nil, false)
 		if _, ok := hn.(hashNode); ok || i == 0 {
 			// If the node's database encoding is a hash (or is the
 			// root node), it becomes a proof element.
