@@ -47,6 +47,13 @@ func CacheMisses() int64 {
 	return cacheMissCounter.Count()
 }
 
+// CacheUnloads retrieves a global counter measuring the number of cache unloads
+// the trie did since process startup. This isn't useful for anything apart from
+// trie debugging purposes.
+func CacheUnloads() int64 {
+	return cacheUnloadCounter.Count()
+}
+
 func init() {
 	sha3.NewKeccak256().Sum(emptyState[:0])
 }
@@ -487,6 +494,9 @@ func (t *Trie) CommitTo(db DatabaseWriter) (root common.Hash, err error) {
 	}
 	t.root = cached
 	t.cachegen++
+
+	glog.V(logger.Debug).Infof("Trie cache stats: %d misses, %d unloads", CacheMisses(), CacheUnloads())
+
 	return common.BytesToHash(hash.(hashNode)), nil
 }
 
