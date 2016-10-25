@@ -52,7 +52,7 @@ type DirectCache struct {
 	dirty     map[string]bool
 }
 
-type NullCacheValidator struct {}
+type NullCacheValidator struct{}
 
 func (cv *NullCacheValidator) IsCanonChainBlock(num uint64, hash common.Hash) bool {
 	return false
@@ -60,12 +60,12 @@ func (cv *NullCacheValidator) IsCanonChainBlock(num uint64, hash common.Hash) bo
 
 func NewDirectCache(pm PersistentMap, db Database, keyPrefix []byte, validator CacheValidator, complete bool) *DirectCache {
 	return &DirectCache{
-		data: pm,
-		db: db,
+		data:      pm,
+		db:        db,
 		keyPrefix: keyPrefix,
 		validator: validator,
-		complete: complete,
-		dirty: make(map[string]bool),
+		complete:  complete,
+		dirty:     make(map[string]bool),
 	}
 }
 
@@ -130,11 +130,12 @@ func (dc *DirectCache) getCached(key []byte) ([]byte, bool) {
 }
 
 func (dc *DirectCache) putCache(dbw DatabaseWriter, key, value []byte) error {
-	enc, _ := rlp.EncodeToBytes(cachedValue{value, dc.blockNum, dc.blockHash})
-	if err := dbw.Put(append(dc.keyPrefix, key...), enc); err != nil {
-		return err
-	}
-	return nil
+	return WriteDirectCache(dc.keyPrefix, key, value, dc.blockNum, dc.blockHash, dbw)
+}
+
+func WriteDirectCache(prefix, key, value []byte, number uint64, hash common.Hash, dbw DatabaseWriter) error {
+	enc, _ := rlp.EncodeToBytes(cachedValue{value, number, hash})
+	return dbw.Put(append(prefix, key...), enc)
 }
 
 func (dc *DirectCache) Update(key, value []byte) {
