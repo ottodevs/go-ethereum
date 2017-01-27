@@ -249,8 +249,13 @@ func (hub *LedgerHub) rescan() {
 		}
 		// If we have a Ledger, mark as still present, or open as new
 		id := uint16(desc.Bus)<<8 + uint16(desc.Address)
-		if _, known := hub.wallets[id]; known {
-			// Track it's presence, but don't open again
+		if wallet, known := hub.wallets[id]; known {
+			// Wallet seem to be present, check for unplug/replug (Windows assigns the same address)
+			if _, err := wallet.device.ActiveConfig(); err == usb.ERROR_NO_DEVICE {
+				// Device got reset without an address change, reinit
+				return true
+			}
+			// Device still present as previously, don't open again
 			present[id] = true
 			return false
 		}
