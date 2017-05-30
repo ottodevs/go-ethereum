@@ -290,15 +290,15 @@ func (s *stateSync) popTasks(n int, req *stateReq) error {
 }
 
 func (s *stateSync) process(req *stateReq) (nproc int, err error) {
-	batch := s.d.stateDB.NewBatch()
 	for _, blob := range req.response {
+		batch := s.d.stateDB.NewBatch()
 		if hash, ok := s.processNodeData(blob, batch); ok {
 			nproc++
 			delete(req.tasks, hash)
 		}
-	}
-	if err := batch.Write(); err != nil {
-		return 0, err
+		if err := batch.Write(); err != nil {
+			return 0, err
+		}
 	}
 	if nproc > 0 && atomic.LoadUint32(&s.d.fsPivotFails) > 1 {
 		log.Trace("Fast-sync progressed, resetting fail counter", "previous", atomic.LoadUint32(&s.d.fsPivotFails))
