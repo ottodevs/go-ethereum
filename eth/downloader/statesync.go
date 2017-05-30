@@ -328,6 +328,9 @@ func (s *stateSync) processNodeData(blob []byte, batch ethdb.Batch) (common.Hash
 	s.keccak.Write(blob)
 	s.keccak.Sum(res.Hash[:0])
 	_, _, err := s.sched.Process([]trie.SyncResult{res}, batch)
+	if err != nil {
+		log.Trace("Failed to process state items", "err", err)
+	}
 	return res.Hash, err == nil
 }
 
